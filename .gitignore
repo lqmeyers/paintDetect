@@ -8,4 +8,6 @@ venv/
 wandb/
 images/
 masks/
-
+*.pdf
+*.png
+*.jpg
