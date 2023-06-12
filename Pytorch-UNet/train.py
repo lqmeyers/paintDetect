@@ -6,8 +6,8 @@ import sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision.transforms as transforms
-import torchvision.transforms.functional as TF
+#import torchvision.transforms as transforms
+#import torchvision.transforms.functional as TF
 from pathlib import Path
 from torch import optim
 from torch.utils.data import DataLoader, random_split
@@ -19,8 +19,8 @@ from unet.unet_model import UNet
 from utils.data_loading import BasicDataset, CarvanaDataset
 from utils.dice_score import dice_loss
 
-dir_img = Path('/home/lmeyers/paintDetect/images/training/')
-dir_mask = Path('/home/lmeyers/paintDetect/masks/training/')
+dir_img = Path('/home/lmeyers/paintDetect/data/images/training/')
+dir_mask = Path('/home/lmeyers/paintDetect/data/full_masks/training/')
 dir_checkpoint = Path('./checkpoints/')
 
 
