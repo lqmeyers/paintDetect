@@ -10,4 +10,5 @@ venv/
 wandb/
 images/
 masks/
+models/
 
