@@ -6,8 +6,8 @@ import sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision.transforms as transforms
-import torchvision.transforms.functional as TF
+#import torchvision.transforms as transforms
+#import torchvision.transforms.functional as TF
 from pathlib import Path
 from torch import optim
 from torch.utils.data import DataLoader, random_split
@@ -16,12 +16,15 @@ from tqdm import tqdm
 import wandb
 from evaluate import evaluate
 from unet.unet_model import UNet
-from utils.data_loading import BasicDataset, CarvanaDataset
+from utils.data_loading import *
 from utils.dice_score import dice_loss
+from utils.dice_score import multiclass_dice_coeff, dice_coeff
 
-dir_img = Path('/home/lmeyers/paintDetect/images/training/')
-dir_mask = Path('/home/lmeyers/paintDetect/masks/training/')
-dir_checkpoint = Path('./checkpoints/')
+ 
+dir_img = '/home/lqmeyers/SLEAP_files/Bee_imgs/baby_bee_imgs/CVAT_sample/'
+dir_mask = '/home/lqmeyers/CVAT/babyBees3perID/Label_Me_3.0/default/Masks/'
+dir_xml = '/home/lqmeyers/CVAT/babyBees3perID/Label_Me_3.0/default/'
+dir_checkpoint = './checkpoints/'
 
 
 def train_model(
@@ -39,10 +42,8 @@ def train_model(
         gradient_clipping: float = 1.0,
 ):
     # 1. Create dataset
-    try:
-        dataset = CarvanaDataset(dir_img, dir_mask, img_scale)
-    except (AssertionError, RuntimeError, IndexError):
-        dataset = BasicDataset(dir_img, dir_mask, img_scale)
+
+    dataset = LabelMeDataset(dir_img,dir_xml,dir_mask,img_scale)
 
     # 2. Split into train / validation partitions
     n_val = int(len(dataset) * val_percent)
