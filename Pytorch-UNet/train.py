@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 import random
+import datetime
 import sys
 import torch
 import torch.nn as nn
@@ -12,6 +13,7 @@ from pathlib import Path
 from torch import optim
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
+import yaml 
 
 import wandb
 from evaluate import evaluate
@@ -21,28 +23,60 @@ from utils.dice_score import dice_loss
 from utils.dice_score import multiclass_dice_coeff, dice_coeff
 
  
-dir_img = '/home/lqmeyers/SLEAP_files/Bee_imgs/baby_bee_imgs/CVAT_sample/'
-dir_mask = '/home/lqmeyers/CVAT/babyBees3perID/Label_Me_3.0/default/Masks/'
-dir_xml = '/home/lqmeyers/CVAT/babyBees3perID/Label_Me_3.0/default/'
-dir_checkpoint = './checkpoints/'
 
 
-def train_model(
-        model,
-        device,
-        epochs: int = 5,
-        batch_size: int = 1,
-        learning_rate: float = 1e-5,
-        val_percent: float = 0.1,
-        save_checkpoint: bool = True,
-        img_scale: float = 0.5,
-        amp: bool = False,
-        weight_decay: float = 1e-8,
-        momentum: float = 0.999,
-        gradient_clipping: float = 1.0,
-):
+
+def train_model(config_file):
+    
+    #Load config file yml 
+    try:
+        with open(config_file) as f:
+            config = yaml.safe_load(f)
+        model_config = config['model_settings'] # settings for model building
+        train_config = config['train_settings'] # settings for model training
+        data_config = config['data_settings'] # settings for data loading
+        eval_config = config['eval_settings'] # settings for evaluation
+        torch_seed = config['torch_seed']
+        verbose = config['verbose']
+    except Exception as e:
+        print('ERROR - unable to open experiment config file. Terminating.')
+        print('Exception msg:',e)
+        return -1
+    
+    #set vars from configs
+    epochs = train_config['epochs']
+    batch_size = train_config['batch_size']
+    learning_rate = float(train_config['learning_rate'])
+    val_percent = train_config['val_percent']
+    save_checkpoint = train_config['save_checkpoint']
+    img_scale = data_config['img_scale']
+    amp = train_config['amp']
+    weight_decay = float(train_config['weight_decay'])
+    momentum = train_config['momentum']
+    gradient_clipping = train_config['gradient_clipping']
+
+    #set datapaths
+    dir_img = data_config['data_paths']['dir_img']
+    dir_mask = data_config['data_paths']['dir_mask']
+    dir_xml = data_config['data_paths']['dir_xml']
+    dir_checkpoint = train_config['dir_checkpoint']
+    
+    # 0 Build model abd define device
+    os.environ["CUDA_VISIBLE_DEVICES"]=str(train_config['gpu'])
+    print('Using GPU',train_config['gpu'])
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logging.info(f'Using device {device}')
+
+    model = UNet(n_channels=model_config['num_channels'], n_classes=model_config['num_classes'], bilinear=model_config['bilinear'])
+    model = model.to(memory_format=torch.channels_last)
+
+    logging.info(f'Network:\n'
+                    f'\t{model.n_channels} input channels\n'
+                    f'\t{model.n_classes} output channels (classes)\n'
+                    f'\t{"Bilinear" if model.bilinear else "Transposed conv"} upscaling')
+    model.to(device=device)
+    
     # 1. Create dataset
-
     dataset = LabelMeDataset(dir_img,dir_xml,dir_mask,img_scale)
 
     # 2. Split into train / validation partitions
@@ -57,7 +91,7 @@ def train_model(
     print("number of batches of validation rounds is "+str(len(val_loader)))
 
     # (Initialize logging)
-    experiment = wandb.init(project='U-Net', resume='allow', anonymous='must')
+    experiment = wandb.init(project='U-Net', resume='allow')
     experiment.config.update(
         dict(epochs=epochs, batch_size=batch_size, learning_rate=learning_rate,
              val_percent=val_percent, save_checkpoint=save_checkpoint, img_scale=img_scale, amp=amp)
@@ -74,6 +108,15 @@ def train_model(
         Images scaling:  {img_scale}
         Mixed Precision: {amp}
     ''')
+    
+
+    # loading from presaved model, add later
+    # if args.load:
+    #     state_dict = torch.load(args.load, map_location=device)
+    #     del state_dict['mask_values']
+    #     model.load_state_dict(state_dict)
+    #     logging.info(f'Model loaded from {args.load}')
+
 
     # 4. Set up the optimizer, the loss, the learning rate scheduler and the loss scaling for AMP
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -152,7 +195,7 @@ def train_model(
                         try:
                             experiment.log({
                                 'learning rate': optimizer.param_groups[0]['lr'],
-                                'validation Dice': val_score,
+                                'validation loss': val_score,
                                 'images': wandb.Image(images[0].cpu()),
                                 'masks': {
                                     'true': wandb.Image(true_masks[0].float().cpu()),
@@ -168,77 +211,27 @@ def train_model(
         if save_checkpoint:
             Path(dir_checkpoint).mkdir(parents=True, exist_ok=True)
             state_dict = model.state_dict()
-            state_dict['mask_values'] = dataset.mask_values
-            torch.save(state_dict, str(dir_checkpoint / 'checkpoint_epoch{}.pth'.format(epoch)))
+            #state_dict['mask_values'] = dataset.mask_values
+            torch.save(state_dict, os.path.join(dir_checkpoint,'checkpoint_epoch{}.pth'.format(epoch)))
             logging.info(f'Checkpoint {epoch} saved!')
+    
+    #save_model as .pth
+    model_name = model_config['model_out_path']+str(model_config['num_classes'])+'_classes_'+str(datetime.datetime.now())+'.pth'
+    torch.save(model,model_name)
 
 
-def get_args():
-    parser = argparse.ArgumentParser(description='Train the UNet on images and target masks')
-    parser.add_argument('--epochs', '-e', metavar='E', type=int, default=5, help='Number of epochs')
-    parser.add_argument('--batch-size', '-b', dest='batch_size', metavar='B', type=int, default=1, help='Batch size')
-    parser.add_argument('--learning-rate', '-l', metavar='LR', type=float, default=1e-5,
-                        help='Learning rate', dest='lr')
-    parser.add_argument('--load', '-f', type=str, default=False, help='Load model from a .pth file')
-    parser.add_argument('--scale', '-s', type=float, default=0.5, help='Downscaling factor of the images')
-    parser.add_argument('--validation', '-v', dest='val', type=float, default=10.0,
-                        help='Percent of the data that is used as validation (0-100)')
-    parser.add_argument('--amp', action='store_true', default=False, help='Use mixed precision')
-    parser.add_argument('--bilinear', action='store_true', default=False, help='Use bilinear upsampling')
-    parser.add_argument('--classes', '-c', type=int, default=2, help='Number of classes')
-
-    return parser.parse_args()
-
-
+print("beginning execution")
 if __name__ == '__main__':
-    args = get_args()
-
-    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    logging.info(f'Using device {device}')
-
-    # Change here to adapt to your data
-    # n_channels=3 for RGB images
-    # n_classes is the number of probabilities you want to get per pixel
-    model = UNet(n_channels=3, n_classes=args.classes, bilinear=args.bilinear)
-    model = model.to(memory_format=torch.channels_last)
-
-    logging.info(f'Network:\n'
-                 f'\t{model.n_channels} input channels\n'
-                 f'\t{model.n_classes} output channels (classes)\n'
-                 f'\t{"Bilinear" if model.bilinear else "Transposed conv"} upscaling')
-
-    if args.load:
-        state_dict = torch.load(args.load, map_location=device)
-        del state_dict['mask_values']
-        model.load_state_dict(state_dict)
-        logging.info(f'Model loaded from {args.load}')
-
-    model.to(device=device)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config_file", help="yaml file with experiment settings", type=str)
+    args = parser.parse_args()
+    
     try:
-        train_model(
-            model=model,
-            epochs=args.epochs,
-            batch_size=args.batch_size,
-            learning_rate=args.lr,
-            device=device,
-            img_scale=args.scale,
-            val_percent=args.val / 100,
-            amp=args.amp
-        )
+        train_model(args.config_file)
     except MemoryError:
         logging.error('Detected OutOfMemoryError! '
                       'Enabling checkpointing to reduce memory usage, but this slows down training. '
                       'Consider enabling AMP (--amp) for fast and memory efficient training')
         torch.cuda.empty_cache()
-        model.use_checkpointing()
-        train_model(
-            model=model,
-            epochs=args.epochs,
-            batch_size=args.batch_size,
-            learning_rate=args.lr,
-            device=device,
-            img_scale=args.scale,
-            val_percent=args.val / 100,
-            amp=args.amp
-        )
+        #model.use_checkpointing()
+        train_model(args.config_file)

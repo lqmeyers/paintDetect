@@ -156,6 +156,7 @@ class LabelMeDataset(Dataset):
         #     ))
 
         # self.mask_values = list(sorted(np.unique(np.concatenate(unique), axis=0).tolist()))
+        # self.mask
         # logging.info(f'Unique mask values: {self.mask_values}')
 
     def __len__(self):
