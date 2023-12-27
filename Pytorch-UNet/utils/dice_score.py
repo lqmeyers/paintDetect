@@ -1,6 +1,20 @@
 import torch
 from torch import Tensor
+import numpy as np 
 
+def calculate_iou(mask_true, mask_pred):
+    # Convert masks to numpy arrays
+    mask_true = np.array(mask_true)
+    mask_pred = np.array(mask_pred)
+
+    # Compute intersection and union
+    intersection = np.logical_and(mask_true, mask_pred)
+    union = np.logical_or(mask_true, mask_pred)
+
+    # Compute IoU
+    iou = np.sum(intersection) / np.sum(union)
+
+    return iou
 
 def dice_coeff(input: Tensor, target: Tensor, reduce_batch_first: bool = False, epsilon: float = 1e-6):
     # Average of Dice coefficient for all batches, or for a single mask

@@ -50,6 +50,30 @@ def unique_mask_values(idx, mask_dir, mask_suffix):
         return np.unique(mask, axis=0)
     else:
         raise ValueError(f'Loaded masks should have 2 or 3 dimensions, found {mask.ndim}')
+    
+def assemble_mask_from_xml(xml_file,mask_path):
+        '''assembles a multiclass numpy array by reading multiple binary masks
+        stored in the mask paths folder using filnames contained in the xml file'''
+        xml_dict = get_xml_mask_dict(xml_file)
+        mask_list = []
+        i = 0 
+        for key in xml_dict:
+            path = os.path.join(mask_path+xml_dict[key])
+            img = Image.open(path).convert('L')
+            normalized_img = (img - np.min(img)) / (np.max(img) - np.min(img))
+            # Convert the normalized image to a binary mask
+            array = (normalized_img > 0.5).astype(np.uint8)
+           # array =  np.array(array).transpose((1, 0,))
+            mask_list.append(array)
+            if i == 0:
+                background_array = np.zeros_like(array)
+                background_array = np.bitwise_or(background_array,array)
+            else:
+                background_array = np.bitwise_or(background_array,array)
+            i+= 1 
+        #mask_list.append(background_array)
+        full_array = np.array(mask_list)
+        return full_array
 
 
 class BasicDataset(Dataset):

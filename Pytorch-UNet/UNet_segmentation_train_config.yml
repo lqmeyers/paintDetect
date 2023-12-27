@@ -26,8 +26,12 @@ train_settings:
 data_settings:
   img_scale: 1 #scale to downsample images by
   data_paths:
-    dir_img: '/home/lqmeyers/SLEAP_files/Bee_imgs/baby_bee_imgs/CVAT_sample/' #directory containing image names
+    dir_train_img: '/home/lqmeyers/paintDetect/data/images/babyBeesOnly/training/' #directory containing image names
+    dir_test_img: '/home/lqmeyers/paintDetect/data/images/babyBeesOnly/testing/' #directory containing image names of test set
     dir_mask: '/home/lqmeyers/CVAT/babyBees3perID/Label_Me_3.0/default/Masks/' #directory containing individual class maps, containing base_name of corresponding image
     dir_xml: '/home/lqmeyers/CVAT/babyBees3perID/Label_Me_3.0/default/' #dir of xml files that contain name of corresponding image and path to masks
 eval_settings:
+  save_dir: './' #base path for dir to save output .npy files to
+  prediction_suffix: '.pred'
+  out_threshold=: 0.5 #threshold for binary masks from predictions
 
