@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "paintdetect"
+version = "0.1.0"
+description = "U-Net semantic segmentation of honeybee images (paint marks + body parts)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+dependencies = [
+    "torch",
+    "numpy",
+    "Pillow",
+    "tqdm",
+    "matplotlib",
+    "PyYAML",
+    "huggingface_hub>=0.23",
+    "safetensors",
+    "wandb",
+]
+
+[project.optional-dependencies]
+# paintdetect.analysis.pose (bee orientation) depends on OpenCV.
+analysis = ["opencv-python"]
+dev = ["pytest", "jupyter"]
+
+[project.scripts]
+paintdetect = "paintdetect.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

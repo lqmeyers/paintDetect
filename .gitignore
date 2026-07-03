@@ -12,3 +12,19 @@ images/
 masks/
 models/
 
+# packaging / build
+*.egg-info/
+build/
+dist/
+
+# model + eval outputs
+*.safetensors
+*.npy
+predict*/
+
+# generated artifacts
+*.png
+*.pdf
+*.html
+*.mp4
+

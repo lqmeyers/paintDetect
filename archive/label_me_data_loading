@@ -1,0 +1,85 @@
+import os 
+import numpy as np 
+import pandas as pd 
+import xml.etree.ElementTree as ET
+from PIL import Image
+from matplotlib import pyplot as plt
+
+
+# #In file
+# data_file =  '/home/lqmeyers/CVAT/babyBees3perID/Label_Me_3.0/default/f22x2022_06_28.mp4.track000067.frame004960.xml'
+
+# #directory of individual masks
+# mask_dir = '/home/lqmeyers/CVAT/babyBees3perID/Label_Me_3.0/default/Masks/'
+
+# tree = ET.parse(data_file)
+# root = tree.getroot()
+
+
+
+# mask_paths = []
+
+# for obj_elem in root.findall('.//object'):
+#     # Extract information about the object
+#     name = obj_elem.find('name').text
+#     # Extract information from the 'segm' element
+#     mask = obj_elem.find('segm/mask').text
+   
+#     # Print or process the extracted information
+#     print(f"Object: {name}")
+#     print(f"  Mask: {mask}")        
+#     mask_paths.append(mask)
+
+#image_size = Image.open(os.path.join(mask_dir,mask_paths[0])).size
+#class_array =  np.zeros_like(image_size)
+
+def get_xml_mask_dict(xml_file):
+    '''returns a dict of the paths to individual classwise masks for each class 
+       of a multiclass array as contained in the xml file of the LabelMe format export'''
+    tree = ET.parse(xml_file)
+    root = tree.getroot()
+    xml_dict = {}
+    for obj_elem in root.findall('.//object'):
+    # Extract information about the object
+        name = obj_elem.find('name').text
+        # Extract information from the 'segm' element
+        mask = obj_elem.find('segm/mask').text
+        xml_dict[name]=mask
+    return xml_dict
+
+def assemble_mask_from_xml(xml_file,mask_path):
+        '''assembles a multiclass numpy array by reading multiple binary masks
+        stored in the mask paths folder using filnames contained in the xml file'''
+        xml_dict = get_xml_mask_dict(xml_file)
+        mask_list = []
+        i = 0 
+        for key in xml_dict:
+            path = os.path.join(mask_path+xml_dict[key])
+            img = Image.open(path).convert('L')
+            normalized_img = (img - np.min(img)) / (np.max(img) - np.min(img))
+            # Convert the normalized image to a binary mask
+            array = (normalized_img > 0.5).astype(np.uint8)
+            array =  np.array(array).transpose((1, 0,))
+
+            mask_list.append(array)
+            if i == 0:
+                background_array = np.zeros_like(array)
+                background_array = np.bitwise_or(background_array,array)
+            else:
+                background_array = np.bitwise_or(background_array,array)
+            i+= 1 
+        mask_list.append(background_array)
+        full_array = np.array(mask_list)
+             
+        return full_array
+
+        
+        
+        
+        
+
+
+full = assemble_mask_from_xml('/home/lqmeyers/CVAT/babyBees3perID/Label_Me_3.0/default/f13x2022_06_28.mp4.track000114.frame004216.xml','/home/lqmeyers/CVAT/babyBees3perID/Label_Me_3.0/default/Masks/')
+print(full.shape)       
+
+

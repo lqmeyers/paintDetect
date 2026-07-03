@@ -1,0 +1,26 @@
+# Pinned to mirror the working `mlenv` conda environment (Python 3.9.16, torch 2.8.0).
+# torchvision is intentionally absent: the only import was an unused
+# `from torchvision import transforms` in the old predict.py.
+#
+# Install torch to match your CUDA. On this machine mlenv uses torch 2.8.0;
+# if creating a fresh env, install torch first per https://pytorch.org, e.g.:
+#   pip install torch==2.8.0
+# then: pip install -r requirements.txt && pip install -e .
+
+torch==2.8.0
+numpy==1.24.3
+Pillow==9.4.0
+tqdm==4.66.5
+matplotlib==3.9.2
+PyYAML==6.0
+
+# HuggingFace-compatible model save/load (config.json + safetensors)
+huggingface_hub==0.26.2
+safetensors>=0.4,<1.0
+
+# Experiment tracking
+wandb>=0.16
+
+# Analysis extras (paintdetect.analysis.pose uses OpenCV); optional but included
+# here so the env is complete. Also available via `pip install -e .[analysis]`.
+opencv-python>=4.8

@@ -56,7 +56,7 @@ def train_model(config_file):
     gradient_clipping = train_config['gradient_clipping']
 
     #set datapaths
-    dir_img = data_config['data_paths']['dir_img']
+    dir_img = data_config['data_paths']['dir_train_img']
     dir_mask = data_config['data_paths']['dir_mask']
     dir_xml = data_config['data_paths']['dir_xml']
     dir_checkpoint = train_config['dir_checkpoint']
