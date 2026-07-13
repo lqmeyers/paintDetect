@@ -11,27 +11,27 @@ train_settings:
   val_percent: 0.1 #percent of training set to reserve as validation set 
   save_checkpoint: True #whether or not to save checkpoints
   save_checkpoint_freq: 50 #save model every ___ epochs
-  dir_checkpoint: './checkpoints/' #directory to save checkpoint models to 
+  dir_checkpoint: '/home/lqmeyers/paintDetect/rerun_2026/checkpoints/' #directory to save checkpoint models to 
   learning_rate: 1e-5 
   amp: False
   weight_decay: 1e-8
   momentum: 0.999
   gradient_clipping: 1.0
-  gpu: 1 #set GPU to use
-  wandb_project_name: Cleaning_test #project name will contain individual runs 
+  gpu: 0 #set GPU to use
+  wandb_project_name: UNet_rerun #project name will contain individual runs 
   wandb_entity_name: meyers_luke_lab #contains all projects in a shared workspace 
-  wandb_dir_path: ./ #where to save training logs and wandb outputs
+  wandb_dir_path: /home/lqmeyers/paintDetect/rerun_2026/checkpoints/ #where to save training logs and wandb outputs
   wandb_resume: False #Can be used to link crashed runs to previous wandb runs
   checkpoint_to_load: #if resuming
 data_settings:
   img_scale: 1 #scale to downsample images by
   data_paths:
-    dir_train_img: '/home/lqmeyers/paintDetect/data/images/babyBeesOnly/training/' #directory containing image names
-    dir_test_img: '/home/lqmeyers/paintDetect/data/images/babyBeesOnly/testing/' #directory containing image names of test set
-    dir_mask: '/home/lqmeyers/CVAT/babyBees3perID/Label_Me_3.0/default/Masks/' #directory containing individual class maps, containing base_name of corresponding image
-    dir_xml: '/home/lqmeyers/CVAT/babyBees3perID/Label_Me_3.0/default/' #dir of xml files that contain name of corresponding image and path to masks
+    dir_train_img: '/home/lqmeyers/paintDetect/data/images/training/' #directory containing image names
+    dir_test_img: '/home/lqmeyers/paintDetect/data/images/testing/' #directory containing image names of test set
+    dir_mask: '/home/lqmeyers/paintDetect/data/paint_only_masks/training/' #'/home/lqmeyers/CVAT/babyBees3perID/Label_Me_3.0/default/Masks/' #directory containing individual class maps, containing base_name of corresponding image
+    dir_xml: # '/home/lqmeyers/CVAT/babyBees3perID/Label_Me_3.0/default/' #dir of xml files that contain name of corresponding image and path to masks
 eval_settings:
-  save_dir: './' #base path for dir to save output .npy files to
+  save_dir: '/home/lqmeyers/paintDetect/rerun_2026/' #base path for dir to save output .npy files to
   prediction_suffix: '.pred'
   out_threshold=: 0.5 #threshold for binary masks from predictions
 

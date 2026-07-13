@@ -118,7 +118,10 @@ def train_and_eval(config_file):
     model.to(device=device)
     
     # 1. Create dataset
-    dataset = LabelMeDataset(dir_img,dir_xml,dir_mask,img_scale)
+    if dir_xml is not None:
+        dataset = LabelMeDataset(dir_img,dir_xml,dir_mask,img_scale)
+    else:
+        dataset = BasicDataset(dir_img, dir_mask, img_scale)
 
     # 2. Split into train / validation partitions
     n_val = int(len(dataset) * val_percent)
@@ -132,7 +135,7 @@ def train_and_eval(config_file):
     print("number of batches of validation rounds is "+str(len(val_loader)))
 
     # (Initialize logging)
-    experiment = wandb.init(project='U-Net', resume='allow')
+    experiment = wandb.init(project='U-Net', resume='allow', dir=train_config['wandb_dir_path'], entity=train_config['wandb_entity_name'], name=train_config['wandb_project_name'])
     experiment.config.update(
         dict(epochs=epochs, batch_size=batch_size, learning_rate=learning_rate,
              val_percent=val_percent, save_checkpoint=save_checkpoint, img_scale=img_scale, amp=amp)
