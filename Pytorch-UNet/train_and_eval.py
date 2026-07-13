@@ -138,11 +138,11 @@ def train_and_eval(config_file):
     print("number of batches of validation rounds is "+str(len(val_loader)))
 
     # (Initialize logging)
-    # experiment = wandb.init(project='U-Net', resume='allow', dir=train_config['wandb_dir_path'], entity=train_config['wandb_entity_name'], name=train_config['wandb_project_name'])
-    # experiment.config.update(
-    #     dict(epochs=epochs, batch_size=batch_size, learning_rate=learning_rate,
-    #          val_percent=val_percent, save_checkpoint=save_checkpoint, img_scale=img_scale, amp=amp)
-    # )
+    experiment = wandb.init(project='U-Net', resume='allow', dir=train_config['wandb_dir_path'], entity=train_config['wandb_entity_name'], name=train_config['wandb_project_name'])
+    experiment.config.update(
+        dict(epochs=epochs, batch_size=batch_size, learning_rate=learning_rate,
+            val_percent=val_percent, save_checkpoint=save_checkpoint, img_scale=img_scale, amp=amp)
+    )
 
     logging.info(f'''Starting training:
         Epochs:          {epochs}
@@ -227,7 +227,7 @@ def train_and_eval(config_file):
                                 histograms['Gradients/' + tag] = wandb.Histogram(value.grad.data.cpu())
 
                         val_score = evaluate(model, val_loader, device, amp)
-                        #print("score of validation round is "+str(val_score))
+                        print("score of validation round is "+str(val_score))
                         scheduler.step(val_score)
 
                         logging.info('Validation Dice score: {}'.format(val_score))
@@ -244,7 +244,8 @@ def train_and_eval(config_file):
                                 'epoch': epoch,
                                 **histograms
                             })
-                        except:
+                        except Exception as e:
+                            print(e)
                             pass
 
         if save_checkpoint:
