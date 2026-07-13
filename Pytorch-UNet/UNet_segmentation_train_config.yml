@@ -2,11 +2,11 @@ torch_seed: 101 #set torch seed
 verbose: True
 model_settings:
   num_channels: 3 #number of input channels (3 for RGB)
-  num_classes: 4 #number of segmentation classes excluding background
+  num_classes: 1  #number of segmentation classes excluding background
   bilinear: False
   model_out_path: ./ #where to save model 
 train_settings:
-  epochs: 1 #num epochs to train for 
+  epochs: 30 #num epochs to train for 
   batch_size: 7 
   val_percent: 0.1 #percent of training set to reserve as validation set 
   save_checkpoint: True #whether or not to save checkpoints
@@ -29,6 +29,7 @@ data_settings:
     dir_train_img: '/home/lqmeyers/paintDetect/data/images/training/' #directory containing image names
     dir_test_img: '/home/lqmeyers/paintDetect/data/images/testing/' #directory containing image names of test set
     dir_mask: '/home/lqmeyers/paintDetect/data/paint_only_masks/training/' #'/home/lqmeyers/CVAT/babyBees3perID/Label_Me_3.0/default/Masks/' #directory containing individual class maps, containing base_name of corresponding image
+    dir_test_mask: '/home/lqmeyers/paintDetect/data/paint_only_masks/testing/' #'/home/lqmeyers/CVAT/babyBees3perID/Label_Me_3.0/default/Masks/' #directory containing individual class maps, containing base_name of corresponding image
     dir_xml: # '/home/lqmeyers/CVAT/babyBees3perID/Label_Me_3.0/default/' #dir of xml files that contain name of corresponding image and path to masks
 eval_settings:
   save_dir: '/home/lqmeyers/paintDetect/rerun_2026/' #base path for dir to save output .npy files to

@@ -99,6 +99,7 @@ def train_and_eval(config_file):
     #set datapaths
     dir_img = data_config['data_paths']['dir_train_img']
     dir_mask = data_config['data_paths']['dir_mask']
+    dir_test_mask = data_config['data_paths']['dir_test_mask']
     dir_xml = data_config['data_paths']['dir_xml']
     dir_checkpoint = train_config['dir_checkpoint']
     
@@ -108,7 +109,9 @@ def train_and_eval(config_file):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Using device {device}')
 
-    model = UNet(n_channels=model_config['num_channels'], n_classes=model_config['num_classes'], bilinear=model_config['bilinear'])
+    # config num_classes counts foreground classes only; add 1 for the background class
+    n_total_classes = model_config['num_classes'] + 1
+    model = UNet(n_channels=model_config['num_channels'], n_classes=n_total_classes, bilinear=model_config['bilinear'])
     model = model.to(memory_format=torch.channels_last)
 
     logging.info(f'Network:\n'
@@ -135,11 +138,11 @@ def train_and_eval(config_file):
     print("number of batches of validation rounds is "+str(len(val_loader)))
 
     # (Initialize logging)
-    experiment = wandb.init(project='U-Net', resume='allow', dir=train_config['wandb_dir_path'], entity=train_config['wandb_entity_name'], name=train_config['wandb_project_name'])
-    experiment.config.update(
-        dict(epochs=epochs, batch_size=batch_size, learning_rate=learning_rate,
-             val_percent=val_percent, save_checkpoint=save_checkpoint, img_scale=img_scale, amp=amp)
-    )
+    # experiment = wandb.init(project='U-Net', resume='allow', dir=train_config['wandb_dir_path'], entity=train_config['wandb_entity_name'], name=train_config['wandb_project_name'])
+    # experiment.config.update(
+    #     dict(epochs=epochs, batch_size=batch_size, learning_rate=learning_rate,
+    #          val_percent=val_percent, save_checkpoint=save_checkpoint, img_scale=img_scale, amp=amp)
+    # )
 
     logging.info(f'''Starting training:
         Epochs:          {epochs}
@@ -170,6 +173,7 @@ def train_and_eval(config_file):
         epoch_loss = 0
         with tqdm(total=n_train, desc=f'Epoch {epoch}/{epochs}', unit='img') as pbar:
             for batch in train_loader:
+
                 images, true_masks = batch['image'], batch['mask']
 
                 assert images.shape[1] == model.n_channels, \
@@ -178,7 +182,7 @@ def train_and_eval(config_file):
                     'the images are loaded correctly.'
 
                 images = images.to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
-                true_masks = true_masks.to(device=device, dtype=torch.float32)
+                true_masks = true_masks.to(device=device, dtype=torch.long)
 
                 with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
                     masks_pred = model(images)
@@ -287,13 +291,17 @@ def train_and_eval(config_file):
 
     model.eval()
 
-    results_array = np.zeros((len(in_files),model_config['num_classes']))
+    results_array = np.zeros((len(in_files),model.n_classes))
     for idx, filename in enumerate(in_files):
         logging.info(f'Predicting image {filename} ...')
         img = Image.open(filename)
-        xml_file_true = dir_xml+os.path.basename(filename)[:-4]+'.xml'
-        mask_true = assemble_mask_from_xml(xml_file_true,dir_mask)
-       
+        if dir_xml is not None:
+            xml_file_true = dir_xml+os.path.basename(filename)[:-4]+'.xml'
+            mask_true = assemble_mask_from_xml(xml_file_true,dir_mask)
+        else: 
+           mask_true = np.array(Image.open(glob(dir_test_mask+os.path.basename(filename)[:-4]+'.*.png')[0]))
+           # masks are stored as 0/255; binarize to 0/1 for IoU and confusion matrix
+           mask_true = (mask_true > 0).astype(np.int8)
 
         img = torch.from_numpy(BasicDataset.preprocess(None, img, img_scale, is_mask=False))
         img = img.unsqueeze(0)
@@ -305,12 +313,13 @@ def train_and_eval(config_file):
         output = output.squeeze().detach().cpu().numpy()
         output= threshold_predictions(output)
 
-        cf_array = np.zeros_like(mask_true)
+        cf_array = np.zeros((model.n_classes,) + mask_true.shape, dtype=np.int8)
         iou_for_sample = np.array([],dtype=np.float64)
         for i, mask in enumerate(output): 
-            iou = calculate_iou(mask_true[i],mask)
+            iou = calculate_iou(mask_true,mask)
             iou_for_sample = np.append(iou_for_sample,iou)
-            cf = pixel_wise_confusion_matrix(mask,mask_true[i])
+            #print(mask_true.shape,mask.shape)
+            cf = pixel_wise_confusion_matrix(mask,mask_true)
             cf_array[i] = cf
       
         out_filename = out_files[idx]
