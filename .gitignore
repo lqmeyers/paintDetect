@@ -11,4 +11,6 @@ wandb/
 images/
 masks/
 models/
-
+outputs/
+old/
+CLAUDE*

@@ -141,7 +141,7 @@ def train_and_eval(config_file):
     print("number of batches of validation rounds is "+str(len(val_loader)))
 
     # (Initialize logging)
-    experiment = wandb.init(project='U-Net', resume='allow', dir=train_config['wandb_dir_path'], entity=train_config['wandb_entity_name'], name=train_config['wandb_project_name'])
+    experiment = wandb.init(dir=train_config['wandb_dir_path'], entity=train_config['wandb_entity_name'], project=train_config['wandb_project_name'])
     experiment.config.update(
         dict(epochs=epochs, batch_size=batch_size, learning_rate=learning_rate,
             val_percent=val_percent, save_checkpoint=save_checkpoint, img_scale=img_scale, amp=amp)
