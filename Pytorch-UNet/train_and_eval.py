@@ -109,8 +109,11 @@ def train_and_eval(config_file):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Using device {device}')
 
-    # config num_classes counts foreground classes only; add 1 for the background class
-    n_total_classes = model_config['num_classes'] + 1
+    # config num_classes counts foreground classes only.
+    # Binary (1 foreground class) -> a single sigmoid channel; background is implicit (sigmoid < 0.5).
+    # Multiclass (>1) -> one channel per foreground class plus an explicit background channel.
+    num_fg_classes = model_config['num_classes']
+    n_total_classes = 1 if num_fg_classes == 1 else num_fg_classes + 1
     model = UNet(n_channels=model_config['num_channels'], n_classes=n_total_classes, bilinear=model_config['bilinear'])
     model = model.to(memory_format=torch.channels_last)
 
@@ -161,9 +164,11 @@ def train_and_eval(config_file):
 
     #optimizer = optim.RMSprop(model.parameters(),
                           #    lr=learning_rate, weight_decay=weight_decay, momentum=momentum, foreach=True)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=5,factor=.5,min_lr=1e-6)  # goal: maximize Dice score
+    # evaluate() returns validation loss (lower is better), so use mode='min'
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5,factor=.5,min_lr=1e-6)
     grad_scaler = torch.cuda.amp.GradScaler(enabled=amp)
-    criterion = nn.CrossEntropyLoss()
+    # single-channel sigmoid + BCE for binary; softmax + cross-entropy for multiclass
+    criterion = nn.BCEWithLogitsLoss() if model.n_classes == 1 else nn.CrossEntropyLoss()
     
     global_step = 0
     #"""
@@ -186,17 +191,11 @@ def train_and_eval(config_file):
 
                 with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
                     masks_pred = model(images)
-                    #if model.n_classes == 1:
-                        #loss = criterion(masks_pred.squeeze(1), true_masks.float())
-                        #loss += dice_loss(F.sigmoid(masks_pred.squeeze(1)), true_masks.float(), multiclass=False)
-                    #@else:
-                    loss = criterion(masks_pred, true_masks)
-                    #print(loss.shape)
-                    #loss += dice_loss(
-                        #F.softmax(masks_pred, dim=1).float(),
-                        #F.one_hot(true_masks, model.n_classes).permute(0, 3, 1, 2).float(),
-                        #multiclass=True
-                       # )
+                    if model.n_classes == 1:
+                        # BCE learns the foreground only; squeeze the channel dim to match (B,H,W) float targets
+                        loss = criterion(masks_pred.squeeze(1), true_masks.float())
+                    else:
+                        loss = criterion(masks_pred, true_masks)
 
                 optimizer.zero_grad(set_to_none=True)
                 grad_scaler.scale(loss).backward()
@@ -232,13 +231,19 @@ def train_and_eval(config_file):
 
                         logging.info('Validation Dice score: {}'.format(val_score))
                         try:
+                            # build a 2D (H,W) predicted mask for visualization
+                            if model.n_classes == 1:
+                                pred_vis = (torch.sigmoid(masks_pred[0, 0]) > 0.5).float()
+                            else:
+                                pred_vis = masks_pred.argmax(dim=1)[0].float()
                             experiment.log({
                                 'learning rate': optimizer.param_groups[0]['lr'],
                                 'validation loss': val_score,
                                 'images': wandb.Image(images[0].cpu()),
                                 'masks': {
-                                    'true': wandb.Image(true_masks[0].float().cpu()),
-                                    'pred': wandb.Image(masks_pred.argmax(dim=1)[0].float().cpu()),
+                                    # wandb.Image permutes torch tensors as 3D CHW, so pass 2D masks as numpy
+                                    'true': wandb.Image(true_masks[0].float().cpu().numpy()),
+                                    'pred': wandb.Image(pred_vis.cpu().numpy()),
                                 },
                                 'step': global_step,
                                 'epoch': epoch,
@@ -292,14 +297,16 @@ def train_and_eval(config_file):
 
     model.eval()
 
-    results_array = np.zeros((len(in_files),model.n_classes))
+    # number of foreground masks scored per image: 1 for binary, one per foreground class otherwise
+    num_fg_classes = 1 if model.n_classes == 1 else model.n_classes - 1
+    results_array = np.zeros((len(in_files), num_fg_classes))
     for idx, filename in enumerate(in_files):
         logging.info(f'Predicting image {filename} ...')
         img = Image.open(filename)
         if dir_xml is not None:
             xml_file_true = dir_xml+os.path.basename(filename)[:-4]+'.xml'
             mask_true = assemble_mask_from_xml(xml_file_true,dir_mask)
-        else: 
+        else:
            mask_true = np.array(Image.open(glob(dir_test_mask+os.path.basename(filename)[:-4]+'.*.png')[0]))
            # masks are stored as 0/255; binarize to 0/1 for IoU and confusion matrix
            mask_true = (mask_true > 0).astype(np.int8)
@@ -309,31 +316,33 @@ def train_and_eval(config_file):
         img = img.to(device=device, dtype=torch.float32)
 
         with torch.no_grad():
-            output = model(img)
-            
-        output = output.squeeze().detach().cpu().numpy()
-        output= threshold_predictions(output)
+            output = model(img)  # (1, n_classes, H, W)
 
-        cf_array = np.zeros((model.n_classes,) + mask_true.shape, dtype=np.int8)
-        iou_for_sample = np.array([],dtype=np.float64)
-        for i, mask in enumerate(output): 
-            iou = calculate_iou(mask_true,mask)
-            iou_for_sample = np.append(iou_for_sample,iou)
-            #print(mask_true.shape,mask.shape)
-            cf = pixel_wise_confusion_matrix(mask,mask_true)
-            cf_array[i] = cf
-      
+        # build one binary predicted mask per foreground class
+        if model.n_classes == 1:
+            prob = torch.sigmoid(output)[0, 0].detach().cpu().numpy()
+            pred_masks = [(prob > 0.5).astype(np.int8)]
+        else:
+            # per-class argmax over softmax; skip background class 0.
+            # NOTE: per-class IoU is only meaningful with per-class ground truth (dir_xml path);
+            # against a single binary GT mask only the binary case is fully meaningful.
+            labels = output.softmax(dim=1).argmax(dim=1)[0].detach().cpu().numpy()
+            pred_masks = [(labels == c).astype(np.int8) for c in range(1, model.n_classes)]
+
+        cf_array = np.zeros((num_fg_classes,) + mask_true.shape, dtype=np.int8)
+        iou_for_sample = np.zeros(num_fg_classes, dtype=np.float64)
+        for i, mask in enumerate(pred_masks):
+            iou_for_sample[i] = calculate_iou(mask_true, mask)
+            cf_array[i] = pixel_wise_confusion_matrix(mask, mask_true)
+
         out_filename = out_files[idx]
-        # result = mask_to_image(mask, mask_values)
-        #result.save(out_filename)
         logging.info(f'Mask saved to {out_filename}')
-        
-        #SAVE ARRAY TO .NPY FILE 
+
+        #SAVE ARRAY TO .NPY FILE
         print('saving file',out_filename[:-4]+'.npy')
         np.save(out_filename[:-4]+'.npy',cf_array)
 
         #Aggregate eval_scores and display
-        iou_for_sample = iou_for_sample.reshape(1, -1)
         results_array[idx] = iou_for_sample
     print('Total IoUs calculated in shape: ',results_array.shape)
     print(idx)
